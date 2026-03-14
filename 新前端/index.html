@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>字牌AI - 麻将智能分析</title>
+  <style>
+    :root {
+      --primary: #1a1a2e;
+      --primary-light: #16213e;
+      --accent: #e94560;
+      --accent-soft: #ff6b6b;
+      --success: #00d9a5;
+      --warning: #ffc93c;
+      --danger: #ff4757;
+      --text: #eaeaea;
+      --text-dim: #8b8b9a;
+      --card-bg: #1f1f3a;
+      --card-border: #2d2d4a;
+      --tile-wan: #e8f4f8;
+      --tile-tiao: #d4edda;
+      --tile-tong: #fce4ec;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--primary);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--primary-light), var(--primary));
+      padding: 1.5rem;
+      text-align: center;
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+    
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent-soft));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .header .tagline {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+    }
+    
+    /* Main Container */
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 1rem;
+      padding-bottom: 5rem;
+    }
+    
+    /* Mode Selector */
+    .mode-selector {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      background: var(--card-bg);
+      padding: 0.5rem;
+      border-radius: 12px;
+    }
+    
+    .mode-btn {
+      flex: 1;
+      padding: 0.75rem;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .mode-btn.active {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+    }
+    
+    /* Upload Area */
+    .upload-area {
+      background: var(--card-bg);
+      border: 2px dashed var(--card-border);
+      border-radius: 16px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-bottom: 1rem;
+    }
+    
+    .upload-area:hover, .upload-area.dragover {
+      border-color: var(--accent);
+      background: rgba(233, 69, 96, 0.1);
+    }
+    
+    .upload-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 1rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+    
+    .upload-area p {
+      color: var(--text-dim);
+      font-size: 0.875rem;
+    }
+    
+    .upload-area .hint {
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+      opacity: 0.7;
+    }
+    
+    /* Preview Image */
+    .preview-container {
+      position: relative;
+      margin-bottom: 1rem;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--card-bg);
+    }
+    
+    .preview-image {
+      width: 100%;
+      display: block;
+    }
+    
+    .preview-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.8));
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 1rem;
+    }
+    
+    .change-btn {
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    
+    /* Action Button */
+    .action-btn {
+      width: 100%;
+      padding: 1rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(233, 69, 96, 0.4);
+    }
+    
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .action-btn.loading {
+      pointer-events: none;
+    }
+    
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Result Card */
+    .result-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      overflow: hidden;
+      animation: slideUp 0.4s ease;
+    }
+    
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .result-header {
+      background: linear-gradient(135deg, var(--primary-light), var(--card-bg));
+      padding: 1rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+    
+    .result-title {
+      font-size: 0.875rem;
+      color: var(--text-dim);
+      margin-bottom: 0.5rem;
+    }
+    
+    .recommend-action {
+      font-size: 1.25rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .recommend-tile {
+      background: var(--accent);
+      padding: 0.25rem 0.75rem;
+      border-radius: 8px;
+      font-size: 1.5rem;
+    }
+    
+    .result-body {
+      padding: 1rem;
+    }
+    
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    
+    .stat-item {
+      background: var(--primary);
+      padding: 0.75rem;
+      border-radius: 12px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--success);
+    }
+    
+    .stat-value.warning {
+      color: var(--warning);
+    }
+    
+    .stat-value.danger {
+      color: var(--danger);
+    }
+    
+    .stat-label {
+      font-size: 0.625rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Tiles Display */
+    .tiles-section {
+      margin-bottom: 1rem;
+    }
+    
+    .tiles-label {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .tiles-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+    
+    .tile {
+      width: 36px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 700;
+      border: 1px solid var(--card-border);
+    }
+    
+    .tile.wan {
+      background: var(--tile-wan);
+      color: var(--primary);
+      border-color: #b8d4e3;
+    }
+    
+    .tile.tiao {
+      background: var(--tile-tiao);
+      color: #155724;
+      border-color: #c3e6cb;
+    }
+    
+    .tile.tong {
+      background: var(--tile-tong);
+      color: #721c24;
+      border-color: #f5c6cb;
+    }
+    
+    .tile.ghost {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border-color: #667eea;
+    }
+    
+    .tile.red {
+      color: var(--danger);
+    }
+    
+    .tile.highlight {
+      border: 2px solid var(--accent);
+      box-shadow: 0 0 10px rgba(233, 69, 96, 0.5);
+    }
+    
+    /* AI Suggestion */
+    .ai-suggestion {
+      background: linear-gradient(135deg, rgba(233, 69, 96, 0.1), rgba(255, 107, 107, 0.1));
+      border: 1px solid rgba(233, 69, 96, 0.3);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    
+    .ai-suggestion-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+    
+    .ai-suggestion-text {
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+    
+    /* Safety Tiles */
+    .safety-section {
+      margin-top: 1rem;
+    }
+    
+    .safety-header {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .safety-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      margin-right: 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+    
+    .safety-safe {
+      background: rgba(0, 217, 165, 0.2);
+      color: var(--success);
+    }
+    
+    .safety-caution {
+      background: rgba(255, 201, 60, 0.2);
+      color: var(--warning);
+    }
+    
+    .safety-danger {
+      background: rgba(255, 71, 87, 0.2);
+      color: var(--danger);
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-dim);
+    }
+    
+    .empty-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+    
+    /* Hidden */
+    .hidden {
+      display: none !important;
+    }
+    
+    /* Input */
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>🀄 字牌AI</h1>
+    <p class="tagline">智能麻将分析与策略建议</p>
+  </header>
+  
+  <main class="container">
+    <!-- Mode Selector -->
+    <div class="mode-selector">
+      <button class="mode-btn active" data-mode="upload">📤 截图上传</button>
+      <button class="mode-btn" data-mode="camera">📷 拍照识别</button>
+      <button class="mode-btn" data-mode="manual">✏️ 手动录入</button>
+    </div>
+    
+    <!-- Upload Mode -->
+    <div id="upload-mode">
+      <div class="upload-area" id="upload-area">
+        <div class="upload-icon">📷</div>
+        <p>点击或拖拽上传游戏截图</p>
+        <p class="hint">支持 PNG、JPG、WEBP</p>
+      </div>
+      <input type="file" id="file-input" accept="image/*">
+    </div>
+    
+    <!-- Camera Mode -->
+    <div id="camera-mode" class="hidden">
+      <div class="preview-container">
+        <video id="camera-preview" class="preview-image" autoplay playsinline></video>
+        <div class="preview-overlay">
+          <button class="change-btn" id="camera-capture">📸 拍照</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Manual Mode -->
+    <div id="manual-mode" class="hidden">
+      <div class="result-card">
+        <div class="result-body">
+          <p style="color: var(--text-dim); text-align: center; padding: 2rem;">
+            手动录入手牌功能开发中...
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Preview -->
+    <div id="preview-section" class="preview-container hidden">
+      <img id="preview-image" class="preview-image" alt="预览">
+      <div class="preview-overlay">
+        <button class="change-btn" id="change-image">🔄 更换图片</button>
+      </div>
+    </div>
+    
+    <!-- Action Button -->
+    <button class="action-btn" id="analyze-btn" disabled>
+      <span>🤖 开始AI分析</span>
+    </button>
+    
+    <!-- Loading -->
+    <div id="loading" class="result-card hidden">
+      <div class="result-body" style="text-align: center; padding: 2rem;">
+        <div class="spinner" style="margin: 0 auto 1rem;"></div>
+        <p>AI 正在分析牌局...</p>
+        <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.5rem;">
+          识别区域 → 计算胡息 → 安全评估 → 推演策略
+        </p>
+      </div>
+    </div>
+    
+    <!-- Result -->
+    <div id="result-section" class="hidden">
+      <div class="result-card">
+        <div class="result-header">
+          <div class="result-title">🎯 推荐操作</div>
+          <div class="recommend-action">
+            <span id="recommend-text">分析完成</span>
+            <span class="recommend-tile" id="recommend-tile"></span>
+          </div>
+        </div>
+        <div class="result-body">
+          <!-- Stats -->
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-value" id="stat-huxi">0</div>
+              <div class="stat-label">我的胡息</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="stat-opponent">?</div>
+              <div class="stat-label">对手估算</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="stat-remaining">0</div>
+              <div class="stat-label">剩余底牌</div>
+            </div>
+          </div>
+          
+          <!-- My Hand -->
+          <div class="tiles-section">
+            <div class="tiles-label">🃏 我的手牌</div>
+            <div class="tiles-row" id="hand-tiles"></div>
+          </div>
+          
+          <!-- Discard Priority -->
+          <div class="tiles-section" id="discard-priority-section">
+            <div class="tiles-label">📋 出牌优先级</div>
+            <div class="tiles-row" id="discard-priority"></div>
+          </div>
+          
+          <!-- Safety -->
+          <div class="safety-section" id="safety-section">
+            <div class="safety-header">🛡️ 出牌安全度</div>
+            <div id="safety-tiles"></div>
+          </div>
+          
+          <!-- AI Suggestion -->
+          <div class="ai-suggestion" id="ai-suggestion">
+            <div class="ai-suggestion-header">
+              💡 AI 策略建议
+            </div>
+            <div class="ai-suggestion-text" id="suggestion-text"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">🀄</div>
+      <p>上传游戏截图开始分析</p>
+    </div>
+  </main>
+  
+  <script>
+    // State
+    let currentMode = 'upload';
+    let imageBase64 = null;
+    let analysisResult = null;
+    
+    // Elements
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    const previewSection = document.getElementById('preview-section');
+    const previewImage = document.getElementById('preview-image');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const loading = document.getElementById('loading');
+    const resultSection = document.getElementById('result-section');
+    const emptyState = document.getElementById('empty-state');
+    const changeImageBtn = document.getElementById('change-image');
+    
+    // Mode switching
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentMode = btn.dataset.mode;
+        
+        document.getElementById('upload-mode').classList.toggle('hidden', currentMode !== 'upload');
+        document.getElementById('camera-mode').classList.toggle('hidden', currentMode !== 'camera');
+        document.getElementById('manual-mode').classList.toggle('hidden', currentMode !== 'manual');
+        
+        if (currentMode === 'upload') {
+          previewSection.classList.add('hidden');
+          analyzeBtn.disabled = !imageBase64;
+        }
+      });
+    });
+    
+    // Upload handling
+    uploadArea.addEventListener('click', () => fileInput.click());
+    
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        handleFile(file);
+      }
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
+    });
+    
+    changeImageBtn.addEventListener('click', () => {
+      fileInput.click();
+    });
+    
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        imageBase64 = e.target.result;
+        previewImage.src = imageBase64;
+        uploadArea.classList.add('hidden');
+        previewSection.classList.remove('hidden');
+        analyzeBtn.disabled = false;
+        emptyState.classList.add('hidden');
+        resultSection.classList.add('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+    
+    // Analyze
+    analyzeBtn.addEventListener('click', async () => {
+      if (!imageBase64) return;
+      
+      analyzeBtn.classList.add('loading');
+      analyzeBtn.innerHTML = '<div class="spinner"></div> 分析中...';
+      previewSection.classList.add('hidden');
+      loading.classList.remove('hidden');
+      resultSection.classList.add('hidden');
+      
+      try {
+        // Call the API - adjust the endpoint as needed
+        const response = await fetch('/api/analysis/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64 })
+        });
+        
+        const data = await response.json();
+        displayResult(data);
+      } catch (error) {
+        console.error('Analysis error:', error);
+        // Demo data for testing
+        displayResult(getDemoResult());
+      }
+    });
+    
+    function displayResult(data) {
+      loading.classList.add('hidden');
+      resultSection.classList.remove('hidden');
+      analyzeBtn.classList.remove('loading');
+      analyzeBtn.innerHTML = '<span>🤖 开始AI分析</span>';
+      
+      // Update stats
+      document.getElementById('stat-huxi').textContent = data.currentHuxi || 0;
+      document.getElementById('stat-opponent').textContent = data.opponentEstimatedHuxi || '?';
+      document.getElementById('stat-remaining').textContent = data.remainingTiles || 0;
+      
+      // Update recommendation
+      const recommendText = document.getElementById('recommend-text');
+      const recommendTile = document.getElementById('recommend-tile');
+      recommendText.textContent = data.recommendedAction || '分析完成';
+      recommendTile.textContent = data.recommendedTile || '';
+      
+      // Render hand tiles
+      const handTilesEl = document.getElementById('hand-tiles');
+      handTilesEl.innerHTML = '';
+      (data.handTiles || []).forEach(tile => {
+        const span = document.createElement('span');
+        span.className = `tile ${getTileClass(tile)}`;
+        span.textContent = tile;
+        handTilesEl.appendChild(span);
+      });
+      
+      // Render discard priority
+      const discardEl = document.getElementById('discard-priority');
+      const discardSection = document.getElementById('discard-priority-section');
+      discardEl.innerHTML = '';
+      if (data.discardPriority && data.discardPriority.length > 0) {
+        discardSection.classList.remove('hidden');
+        data.discardPriority.forEach((tile, i) => {
+          const span = document.createElement('span');
+          span.className = `tile ${getTileClass(tile)}${i === 0 ? ' highlight' : ''}`;
+          span.textContent = (i === 0 ? '★ ' : '') + tile;
+          discardEl.appendChild(span);
+        });
+      } else {
+        discardSection.classList.add('hidden');
+      }
+      
+      // Render safety tiles
+      const safetyEl = document.getElementById('safety-tiles');
+      const safetySection = document.getElementById('safety-section');
+      safetyEl.innerHTML = '';
+      if (data.defenseAnalysis?.tilesSafety?.length > 0) {
+        safetySection.classList.remove('hidden');
+        data.defenseAnalysis.tilesSafety.forEach(ts => {
+          const span = document.createElement('span');
+          const safetyClass = ts.safetyLevel === '安全' ? 'safety-safe' : 
+                            ts.safetyLevel === '较安全' ? 'safety-caution' : 'safety-danger';
+          span.className = `safety-item ${safetyClass}`;
+          span.textContent = ts.safetyEmoji + ' ' + ts.tile;
+          safetyEl.appendChild(span);
+        });
+      } else {
+        safetySection.classList.add('hidden');
+      }
+      
+      // AI Suggestion
+      document.getElementById('suggestion-text').textContent = data.aiSuggestion || data.forwardPlan || '分析完成';
+    }
+    
+    function getTileClass(tile) {
+      if (tile === '鬼' || tile.includes('鬼')) return 'ghost';
+      if ('壹贰叁肆伍陆柒捌玖拾'.includes(tile)) return 'wan';
+      if ('一二三四五六七八九'.includes(tile)) return 'tiao';
+      if ('东南西北中发白'.includes(tile)) return 'tong';
+      if ('二七十贰柒拾'.includes(tile)) return 'red';
+      return 'tong';
+    }
+    
+    // Demo result for testing
+    function getDemoResult() {
+      return {
+        currentHuxi: 8,
+        opponentEstimatedHuxi: 5,
+        remainingTiles: 32,
+        recommendedAction: '建议打',
+        recommendedTile: '三万',
+        handTiles: ['一万', '二万', '三万', '四万', '五万', '六万', '七万', '八万', '九万', '一筒', '二筒', '三筒', '四筒'],
+        discardPriority: ['三万', '四万', '五万', '六万'],
+        defenseAnalysis: {
+          tilesSafety: [
+            { tile: '三万', safetyLevel: '安全', safetyEmoji: '🟢', reason: '对手已打出' },
+            { tile: '四万', safetyLevel: '较安全', safetyEmoji: '🟡', reason: '现刻较少' },
+            { tile: '七万', safetyLevel: '危险', safetyEmoji: '🔴', reason: '对手可能需要' }
+          ]
+        },
+        aiSuggestion: '当前手牌不错，有机会做牌。建议先打三万，这张牌相对安全，而且不影响后续进张。如果后续摸到有用牌，可以考虑换打法。',
+        forwardPlan: '先打三万，摸到筒子或字牌可以考虑换搭子。'
+      };
+    }
+  </script>
+</body>
+</html>
