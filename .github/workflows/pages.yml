@@ -1,4 +1,4 @@
-name: Deploy to Vercel
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,10 +31,8 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-args: '--prod'
-          vercel-project-name: zipai-ai-assistant
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
