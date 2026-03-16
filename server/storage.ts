@@ -5,10 +5,6 @@ import { ENV } from './_core/env';
 
 type StorageConfig = { baseUrl: string; apiKey: string };
 
-export function hasStorageConfig(): boolean {
-  return Boolean(ENV.forgeApiUrl && ENV.forgeApiKey);
-}
-
 function getStorageConfig(): StorageConfig {
   const baseUrl = ENV.forgeApiUrl;
   const apiKey = ENV.forgeApiKey;

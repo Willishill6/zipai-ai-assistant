@@ -19,15 +19,17 @@ export function generateAdviceFromEngine(engine: EngineResult, recognition: any,
 
   // 胡息计算
   const handHuxi = plan0.totalHuxi;
-  const totalHuxi = handHuxi + exposedHuxi;
+  const totalHuxi = handHuxi + exposedHuxi + engine.kanHuxi;
 
   // 胡息明细
   const huxiParts: string[] = [];
-  for (let i = 0; i < plan0.groups.length; i++) {
-    const g = plan0.groups[i];
-    if (g.huxi <= 0) continue;
-    const prefix = i < engine.lockedKan.length ? "🔒" : "";
-    huxiParts.push(`${prefix}${g.tiles.join("")}=${g.huxi}胡`);
+  for (const g of plan0.groups) {
+    if (g.huxi > 0) huxiParts.push(`${g.tiles.join("")}=${g.huxi}胡`);
+  }
+  if (engine.kanHuxi > 0) {
+    for (const k of engine.lockedKan) {
+      huxiParts.push(`🔒${k.tiles.join("")}=${k.huxi}胡`);
+    }
   }
   if (exposedHuxi > 0) huxiParts.push(`明牌=${exposedHuxi}胡`);
   const huxiBreakdown = huxiParts.length > 0

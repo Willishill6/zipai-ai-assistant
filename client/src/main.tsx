@@ -18,13 +18,7 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
-  const loginUrl = getLoginUrl();
-  if (!loginUrl) {
-    console.warn("[Auth] OAuth login is not configured in this environment.");
-    return;
-  }
-
-  window.location.href = loginUrl;
+  window.location.href = getLoginUrl();
 };
 
 queryClient.getQueryCache().subscribe(event => {

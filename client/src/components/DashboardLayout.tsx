@@ -19,9 +19,8 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { getLoginUrl, hasOAuthLoginConfig } from "@/const";
+import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { trpc } from "@/lib/trpc";
 import {
   Camera,
   BookOpen,
@@ -31,8 +30,6 @@ import {
   LogOut,
   PanelLeft,
   Brain,
-  Gauge,
-  Sparkles,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -62,8 +59,6 @@ export default function DashboardLayout({
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
-  const loginUrl = getLoginUrl();
-  const oauthConfigured = hasOAuthLoginConfig();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -76,51 +71,29 @@ export default function DashboardLayout({
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen blueprint-grid">
-        <div className="wireframe-card rounded-[30px] p-10 max-w-md w-full mx-4">
+        <div className="wireframe-card rounded-xl p-10 max-w-md w-full mx-4">
           <div className="flex flex-col items-center gap-6">
-            <div className="mono-label px-3 py-1 rounded-full border status-pill">
-              <span className="status-dot" />
-              CONTROL ROOM ACCESS
-            </div>
             <div className="flex items-center gap-3">
-              <Brain
-                className="h-10 w-10"
-                style={{ color: "oklch(0.66 0.16 205)" }}
-              />
+              <Brain className="h-10 w-10" style={{ color: "oklch(0.75 0.15 195)" }} />
               <h1 className="text-3xl font-black tracking-tight">
                 字牌 AI 大师
               </h1>
             </div>
             <p className="mono-label text-center">
-              GUILIN FEIFEI ZIPAI CONTROL ROOM
+              GUILIN FEIFEI ZIPAI AI ASSISTANT
             </p>
             <p className="text-sm text-muted-foreground text-center">
-              登录后即可使用牌局分析、历史复盘、数据报告与虚拟对战的完整工作台。
+              登录后即可使用 AI 牌局分析、策略建议等全部功能
             </p>
-            {!oauthConfigured ? (
-              <div
-                className="w-full rounded-lg border px-4 py-3 text-xs text-left"
-                style={{
-                  borderColor: "oklch(0.82 0.08 55)",
-                  background: "oklch(0.96 0.03 55)",
-                  color: "oklch(0.36 0.08 55)",
-                }}
-              >
-                本地开发环境未配置 OAuth
-                登录地址。页面已经可以正常打开，但登录按钮暂不可用。
-              </div>
-            ) : null}
           </div>
           <Button
             onClick={() => {
-              if (!loginUrl) return;
-              window.location.href = loginUrl;
+              window.location.href = getLoginUrl();
             }}
             size="lg"
             className="w-full mt-8 shadow-lg hover:shadow-xl transition-all"
-            disabled={!loginUrl}
           >
-            {loginUrl ? "登录开始" : "未配置登录"}
+            登录开始
           </Button>
         </div>
       </div>
@@ -157,24 +130,8 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const activeMenuItem = menuItems.find((item) => item.path === location);
   const isMobile = useIsMobile();
-  const runtimeStatusQuery = trpc.system.runtimeStatus.useQuery(undefined, {
-    staleTime: 30_000,
-    refetchInterval: 30_000,
-  });
-  const runtimeStatus = runtimeStatusQuery.data;
-  const recognitionReady = runtimeStatus?.screenshotRecognitionEnabled ?? false;
-  const engineLabel = runtimeStatus?.llmConfigured
-    ? "AI recognition ready"
-    : recognitionReady
-      ? "Local OCR ready"
-      : "Manual entry only";
-  const engineTone = recognitionReady
-    ? "status-pill"
-    : "status-pill border-[oklch(0.82_0.08_55)] bg-[oklch(0.97_0.03_55)] text-[oklch(0.42_0.09_55)]";
-  const runtimeLabel =
-    runtimeStatus?.runtime === "local" ? "Local runtime" : "Runtime unknown";
 
   useEffect(() => {
     if (isCollapsed) {
@@ -185,7 +142,8 @@ function DashboardLayoutContent({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
+      const sidebarLeft =
+        sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = e.clientX - sidebarLeft;
       if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
         setSidebarWidth(newWidth);
@@ -213,11 +171,11 @@ function DashboardLayoutContent({
       <div className="relative" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
-          className="border-r-0 bg-white/55 backdrop-blur-xl supports-[backdrop-filter]:bg-white/55"
+          className="border-r-0"
           disableTransition={isResizing}
         >
-          <SidebarHeader className="px-3 py-4">
-            <div className="wireframe-card rounded-[24px] p-3 transition-all w-full">
+          <SidebarHeader className="h-16 justify-center">
+            <div className="flex items-center gap-3 px-2 transition-all w-full">
               <button
                 onClick={toggleSidebar}
                 className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
@@ -226,34 +184,19 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed ? (
-                <div className="mt-4 min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Brain
-                      className="h-5 w-5 shrink-0"
-                      style={{ color: "oklch(0.66 0.16 205)" }}
-                    />
-                    <span className="font-bold tracking-tight truncate text-sm">
-                      字牌 AI 大师
-                    </span>
-                  </div>
-                  <div className="mono-label mt-2">Match Analysis Console</div>
-                  <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="status-dot" />
-                    Engine online
-                  </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Brain className="h-5 w-5 shrink-0" style={{ color: "oklch(0.75 0.15 195)" }} />
+                  <span className="font-bold tracking-tight truncate text-sm">
+                    字牌 AI 大师
+                  </span>
                 </div>
               ) : null}
             </div>
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
-            {!isCollapsed ? (
-              <div className="px-4 pb-2 pt-1">
-                <div className="mono-label">Workbench</div>
-              </div>
-            ) : null}
-            <SidebarMenu className="px-3 py-1">
-              {menuItems.map(item => {
+            <SidebarMenu className="px-2 py-1">
+              {menuItems.map((item) => {
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
@@ -261,7 +204,7 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
                       tooltip={item.label}
-                      className="h-11 rounded-2xl transition-all font-normal data-[active=true]:shadow-none"
+                      className="h-10 transition-all font-normal"
                     >
                       <item.icon
                         className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
@@ -275,23 +218,9 @@ function DashboardLayoutContent({
           </SidebarContent>
 
           <SidebarFooter className="p-3">
-            {!isCollapsed ? (
-              <div className="wireframe-card rounded-[24px] p-3 mb-3">
-                <div className="flex items-center gap-2">
-                  <Gauge
-                    className="h-4 w-4"
-                    style={{ color: "oklch(0.62 0.15 160)" }}
-                  />
-                  <div className="text-xs font-semibold">分析工作台已就绪</div>
-                </div>
-                <div className="text-xs text-muted-foreground mt-2 leading-5">
-                  在首页接入牌局画面，在历史和统计页回看你的决策变化。
-                </div>
-              </div>
-            ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
                     <AvatarFallback className="text-xs font-medium">
                       {user?.name?.charAt(0).toUpperCase()}
@@ -342,42 +271,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        {!isMobile ? (
-          <div className="sticky top-0 z-30 px-5 py-4">
-            <div className="wireframe-card rounded-[26px] px-5 py-3 flex items-center justify-between gap-4">
-              <div>
-                <div className="mono-label">
-                  {activeMenuItem?.label ?? "字牌 AI 大师"}
-                </div>
-                <div className="text-base font-bold tracking-tight">
-                  桂林飞飞字牌分析控制台
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="status-pill">
-                  <span className="status-dot" />
-                  {runtimeLabel}
-                </span>
-                <span
-                  className={engineTone}
-                  title={
-                    runtimeStatus?.llmConfigured
-                      ? "当前已启用云端截图 AI 识别"
-                      : recognitionReady
-                        ? "当前已启用本地 OCR 截图识别"
-                        : "当前未启用截图识别，上传后会进入手动录入模式"
-                  }
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {engineLabel}
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        <main className="flex-1 blueprint-grid min-h-screen pb-8">
-          {children}
-        </main>
+        <main className="flex-1 blueprint-grid min-h-screen">{children}</main>
       </SidebarInset>
     </>
   );

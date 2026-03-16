@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { notifyOwner } from "./notification";
 import { adminProcedure, publicProcedure, router } from "./trpc";
-import { hasLlmConfig } from "./llm";
-import { hasStorageConfig } from "../storage";
-import { hasLocalRecognitionSupport } from "../local-recognition";
 
 export const systemRouter = router({
   health: publicProcedure
@@ -15,27 +12,6 @@ export const systemRouter = router({
     .query(() => ({
       ok: true,
     })),
-
-  runtimeStatus: publicProcedure.query(async () => {
-    const llmConfigured = hasLlmConfig();
-    const storageConfigured = hasStorageConfig();
-    const localRecognitionSupported = await hasLocalRecognitionSupport();
-    const screenshotRecognitionEnabled =
-      llmConfigured || localRecognitionSupported;
-    const analysisMode = llmConfigured
-      ? ("ai" as const)
-      : localRecognitionSupported
-        ? ("local" as const)
-        : ("manual" as const);
-
-    return {
-      runtime: "local" as const,
-      llmConfigured,
-      storageConfigured,
-      screenshotRecognitionEnabled,
-      analysisMode,
-    };
-  }),
 
   notifyOwner: adminProcedure
     .input(

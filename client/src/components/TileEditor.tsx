@@ -345,11 +345,11 @@ export default function TileEditor({ tiles, onTilesChanged, isReanalyzing, recom
             <span
               className="px-2 py-0.5 rounded-full font-bold"
               style={{
-                background: "oklch(0.92 0.03 195)",
-                color: "oklch(0.4 0.1 195)",
+                background: stats.total < 18 ? "oklch(0.9 0.08 25)" : "oklch(0.92 0.03 195)",
+                color: stats.total < 18 ? "oklch(0.4 0.15 25)" : "oklch(0.4 0.1 195)",
               }}
             >
-              共{stats.total}张
+              共{stats.total}张{stats.total < 18 ? " ⚠️" : ""}
             </span>
             <span className="px-2 py-0.5 rounded-full" style={{ background: "white", color: "oklch(0.4 0.05 195)", border: "1px solid oklch(0.85 0.05 195)" }}>
               小{stats.smallCount}
@@ -427,19 +427,6 @@ export default function TileEditor({ tiles, onTilesChanged, isReanalyzing, recom
         </div>
       )}
 
-      {!editMode && stats.total === 0 && (
-        <div
-          className="text-xs p-2.5 rounded-lg mb-3"
-          style={{
-            background: "oklch(0.95 0.03 55)",
-            border: "1px solid oklch(0.84 0.08 55)",
-            color: "oklch(0.38 0.08 55)",
-          }}
-        >
-          当前环境未启用截图识别，点击右上角“修正识别”后可手动添加手牌，再点“重新分析”继续计算。
-        </div>
-      )}
-
       {/* 分组展示手牌 */}
       <div className="space-y-3">
         {/* 小字组 */}
@@ -495,7 +482,7 @@ export default function TileEditor({ tiles, onTilesChanged, isReanalyzing, recom
             style={{ borderColor: "oklch(0.7 0.12 145)", color: "oklch(0.45 0.12 145)" }}
           >
             <Plus className="h-3.5 w-3.5" />
-            添加漏识别的牌（当前{stats.total}张）
+            添加漏识别的牌（当前{stats.total}张，应为20-21张）
           </Button>
           
           {showAddPicker && (
