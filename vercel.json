@@ -2,8 +2,12 @@
   "version": 2,
   "builds": [
     {
-      "src": "dist/public/**",
-      "use": "@vercel/static"
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "buildCommand": "pnpm build",
+        "outputDirectory": "dist/public"
+      }
     }
   ],
   "routes": [
