@@ -182,25 +182,35 @@ const RECOGNITION_JSON_SCHEMA = {
   },
 };
 
-// 从LLM响应中提取JSON（处理markdown代码块）
+// 从LLM响应中提取JSON（处理markdown代码块和各种格式）
 function extractJSON(content: string): any {
   if (!content) throw new Error("Empty content");
   // 如果已经是对象直接返回
   if (typeof content !== "string") return content;
-  // 去掉markdown代码块
   let cleaned = content.trim();
-  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "");
+  // 去掉所有markdown代码块标记（支持多行）
+  cleaned = cleaned.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "");
   cleaned = cleaned.trim();
   // 尝试直接解析
   try {
     return JSON.parse(cleaned);
   } catch {
-    // 尝试提取第一个 { ... } 块
+    // 尝试提取最大的 { ... } 块（贪心匹配）
     const match = cleaned.match(/\{[\s\S]*\}/);
     if (match) {
-      return JSON.parse(match[0]);
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        // 尝试修复常见的JSON错误：末尾多余逗号
+        const fixed = match[0].replace(/,\s*([}\]])/g, "$1");
+        try {
+          return JSON.parse(fixed);
+        } catch {
+          // ignore
+        }
+      }
     }
-    throw new Error("Cannot parse JSON from: " + cleaned.slice(0, 100));
+    throw new Error("Cannot parse JSON from: " + cleaned.slice(0, 200));
   }
 }
 async function invokeLLM(messages: any[], responseFormat?: any): Promise<any> {

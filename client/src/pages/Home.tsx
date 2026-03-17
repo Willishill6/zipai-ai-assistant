@@ -163,29 +163,49 @@ const riskBadgeStyles: Record<string, { bg: string; text: string }> = {
 
 // Direct API call helpers (no backend server needed)
 async function callAnalyzeAPI(imageBase64: string): Promise<any> {
-  const resp = await fetch('/api/analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64 }),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(errText || `HTTP ${resp.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000); // 90s timeout
+  try {
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64 }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(errText || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+  } catch (e: any) {
+    if (e.name === 'AbortError') throw new Error('分析超时（90秒），请重试');
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return resp.json();
 }
 
 async function callReanalyzeAPI(data: any): Promise<any> {
-  const resp = await fetch('/api/reanalyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(errText || `HTTP ${resp.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const resp = await fetch('/api/reanalyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(errText || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+  } catch (e: any) {
+    if (e.name === 'AbortError') throw new Error('分析超时（90秒），请重试');
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return resp.json();
 }
 
 export default function Home() {
