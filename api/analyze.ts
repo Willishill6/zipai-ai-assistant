@@ -21,62 +21,41 @@ const FORGE_API_KEY =
   process.env.OPENAI_API_KEY ||
   "sk-5WXsFtEZiTrf54UFE4nnAu";
 
-// ===== V9.3 识别 Prompt =====
-const TILE_RECOGNITION_PROMPT = `你是桂林飞飞字牌游戏的牌面识别专家。你的唯一任务是精确识别截图中每张牌的文字。
-## 核心规则：大字 vs 小字
-这个游戏每个数字有两种写法。区分它们是你最重要的任务！
-**判断方法：看笔画数量和字形复杂度**
-- 小字 = 笔画极少（1-4笔），字形非常简单
-- 大字 = 笔画很多（6笔以上），字形复杂，通常有偏旁部首
-| 数字 | 小字 | 小字笔画特征 | 大字 | 大字笔画特征 | 颜色 |
-|------|------|-------------|------|-------------|------|
-| 1 | 一 | 1笔横线 | 壹 | 12笔，有"士冖豆" | 黑色 |
-| 2 | 二 | 2笔两横 | 贰 | 9笔，有"弋"和"贝" | 红色 |
-| 3 | 三 | 3笔三横 | 叁 | 8笔，有"厶"和"大" | 黑色 |
-| 4 | 四 | 5笔，口中两竖 | 肆 | 13笔，有"聿"和长横 | 黑色 |
-| 5 | 五 | 4笔，横竖横竖 | 伍 | 6笔，左边有"亻"人旁 | 黑色 |
-| 6 | 六 | 4笔，点横撇点 | 陆 | 7笔，左边有"阝"耳旁 | 黑色 |
-| 7 | 七 | 2笔，一横一竖弯 | 柒 | 10笔，上"木"下复杂 | 红色 |
-| 8 | 八 | 2笔，一撇一捺 | 捌 | 10笔，左"扌"右"别" | 黑色 |
-| 9 | 九 | 2笔，撇和弯钩 | 玖 | 7笔，左"王"右"久" | 黑色 |
-| 10 | 十 | 2笔，一横一竖 | 拾 | 9笔，左"扌"右"合" | 红色 |
-鬼牌/飞飞：特殊图案，紫色或彩色，不是汉字
-## ❗最容易犯的错误❗
-1. **七 vs 柒**：「七」极其简单只有2笔（一横一竖弯），「柒」非常复杂有10笔。如果看到红色的简单2笔字→一定是小字「七」！
-2. **十 vs 拾**：「十」极其简单只有2笔（十字形），「拾」左边有提手旁很复杂。如果看到红色的简单十字形→一定是小字「十」！
-3. **五 vs 伍**：「五」只有4笔很简单，「伍」左边有单人旁。如果字形简单无偏旁→是小字「五」！
-4. **八 vs 捌**：「八」只有2笔（撇捺），「捌」左边有提手旁。
-5. **六 vs 陆**：「六」只有4笔，「陆」左边有耳刀旁。
-## 区域识别（极其重要！）
-截图布局说明：
-- **我的手牌（最重要！）**：位于截图底部，是两排白色小牌。上排通常有10-11张，下排通常有10-11张，合计20-21张。你必须识别每一张！
-- 底部左侧已翻开的牌组：我的明牌（碰/坎/吃），这些不是手牌
-- 顶部区域：对手明牌组
-- 中间圆圈周围：弃牌区
-- 右上角数字：剩余底牌
-- 左侧数字+"胡"：我方胡息
-## ❗❗❗ 手牌识别是第一优先级 ❗❗❗
-手牌在截图底部，分上下两排。你必须：
-1. 先识别上排所有牌（从左到右）
-2. 再识别下排所有牌（从左到右）
-3. 上排+下排总数必须是20或21张，如果你只识别出10多张，说明你漏了一排！
-4. 每排通常有10-11张牌，如果某排只识别出5-6张，说明你漏了一半
-## 识别步骤
-1. 先数手牌总数（上排+下排），庄家21张，闲家20张
-2. 从左到右、从上到下逐张识别
-3. 每张牌的识别流程：
-   a. 先看颜色：黑色/红色/紫色
-   b. 再看字形复杂度：笔画少且无偏旁=小字，笔画多或有偏旁=大字
-   c. 红色牌只有6种：小字二/七/十 和 大字贰/柒/拾
-   d. 如果红色且字形极简单（2笔以内）→一定是小字
-4. ❗每种牌最多4张！如果某种牌超过4张，说明你混淆了大小字
-5. 红色牌只有：二/贰、七/柒、十/拾。如果红色且笔画简单→一定是小字
-## ❗❗ 最终验证（必须执行）❗❗
-识别完所有牌后，必须做以下检查：
-1. 数一数每种牌出现了几张，任何一种牌超过4张就说明识别有误
-2. 特别检查以下最容易混淆的对：五/伍、七/柒、十/拾、四/肆、六/陆
-3. 如果发现某种牌5张以上，把多出来的改成对应的大字或小字
-4. 确认手牌总数正确（20或21张）`;
+// ===== V10.0 识别 Prompt =====
+const TILE_RECOGNITION_PROMPT = `你是桂林飞飞字牌游戏的牌面识别专家。这不是麻将！
+
+## ❗❗❗ 最重要：只能使用这初21个字 ❗❗❗
+手牌只能是以下21种之一，不得使用任何其他汉字：
+小字：一 二 三 四 五 六 七 八 九 十
+大字：壹 贰 叁 肆 伍 陆 柒 捌 玖 拾
+鬼牌：鬼
+
+## 大字 vs 小字区分（最关键！）
+| 数 | 小字 | 特征 | 大字 | 特征 | 颜色 |
+|-----|------|------|------|------|------|
+| 1 | 一 | 一横，极简 | 壹 | 有士冒豆，复杂 | 黑 |
+| 2 | 二 | 两横，极简 | 贰 | 有弋和贝，复杂 | 红 |
+| 3 | 三 | 三横，极简 | 叁 | 有厶和大，复杂 | 黑 |
+| 4 | 四 | 口中两竖 | 肆 | 有聿和长横 | 黑 |
+| 5 | 五 | 横竖横竖，无偏旁 | 伍 | 左有人旁仟 | 黑 |
+| 6 | 六 | 点横撇点，无偏旁 | 陆 | 左有耳刀旁阝 | 黑 |
+| 7 | 七 | 一横一弯，极简 | 柒 | 上木下复杂 | 红 |
+| 8 | 八 | 撇捣，极简 | 捌 | 左有提手旁扌 | 黑 |
+| 9 | 九 | 撇和弯钉，极简 | 玖 | 左王右久 | 黑 |
+| 10 | 十 | 十字形，极简 | 拾 | 左有提手旁扌 | 红 |
+
+## 手牌区域（截图底部两排小牌）
+- 上排：底部上方一排，通幸10-11张
+- 下排：截图最底一排，通幸10-11张
+- 合计20张（闲家）或21张（庄家）
+- 底部左侧的明牌组不是手牌！
+
+## ❗ 必须遵守的规则
+1. 手牌只能从上述20个字中选择，绝对不能用其他汉字
+2. 每种牌最多4张，鬼牌最多2张
+3. 红色牌只有：二、七、十、贰、柒、拾
+4. 手牌总数必须是20或21张
+5. 识别完后必须自我检查：有没有不在合法列表的字？有没有某种牌超过4张？`;
 
 // ===== JSON Schema 约束 =====
 const RECOGNITION_JSON_SCHEMA = {
@@ -277,6 +256,51 @@ const SMALL_TO_LARGE: Record<string, string> = {
   '六': '陆', '七': '柒', '八': '捌', '九': '玖', '十': '拾'
 };
 
+// ===== 合法牌名白名单 =====
+const VALID_TILES = new Set([
+  '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', // 小字
+  '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖', '拾', // 大字
+  '鬼' // 鬼牌
+]);
+
+// 常见识别错误的字符映射表（强制纠正）
+const TILE_CORRECTION: Record<string, string> = {
+  // 柒的常见误识
+  '染': '柒', '柔': '柒', '架': '柒', '槨': '柒', '柑': '柒', '枵': '柒',
+  '柜': '柒', '柏': '柒', '柠': '柒', '查': '柒',
+  // 玖的常见误识（荣、荣等字形相近）
+  '荣': '玖', '荫': '玖', '荬': '玖', '荭': '玖',
+  '荮': '玖', '药': '玖', '荰': '玖', '荱': '玖', '荲': '玖',
+  '荳': '玖', '荴': '玖', '荵': '玖', '荶': '玖', '荷': '玖',
+  '荸': '玖', '荹': '玖', '荺': '玖', '荻': '玖', '荼': '玖',
+  // 叁的常见误识
+  '参': '叁', '叄': '叁', '三': '三', // 三已合法
+  // 其他常见误识
+  '山': '三', '己': '九', '已': '二', '丁': '一', '丙': '三',
+  '千': '壹', '万': '壹', // 千/万被误识为壹
+  '化': '六',
+};
+
+function sanitizeTile(tile: string): string | null {
+  if (!tile || typeof tile !== 'string') return null;
+  const t = tile.trim();
+  if (VALID_TILES.has(t)) return t;
+  // 尝试纠正已知错误
+  if (TILE_CORRECTION[t]) return TILE_CORRECTION[t];
+  // 如果是多字符串，取第一个字符尝试
+  if (t.length > 1) {
+    const first = t[0]!;
+    if (VALID_TILES.has(first)) return first;
+    if (TILE_CORRECTION[first]) return TILE_CORRECTION[first];
+  }
+  console.log(`[FILTER] 非法牌名被过滤: "${t}"`);
+  return null; // 非法牌名，丢弃
+}
+
+function filterTiles(tiles: string[]): string[] {
+  return tiles.map(sanitizeTile).filter((t): t is string => t !== null);
+}
+
 async function runAnalysis(imageBase64: string): Promise<any> {
   const t0 = Date.now();
 
@@ -334,15 +358,15 @@ async function runAnalysis(imageBase64: string): Promise<any> {
     return getEmptyAnalysis("牌面识别失败");
   }
 
-  let handTiles: string[] = recognition.handTiles || [];
+  let handTiles: string[] = filterTiles(recognition.handTiles || []);
   console.log(`[DEBUG] LLM识别手牌(${handTiles.length}张): ${handTiles.join(", ")}`);
 
   if (handTiles.length === 0) {
     return getEmptyAnalysis("未能识别到手牌");
   }
 
-  // ===== 自动重试：识别出的手牌不足15张时重试 =====
-  if (handTiles.length < 15) {
+  // ===== 自动重试：识别出的合法手牌不足17张时重试 =====
+  if (handTiles.length < 17) {
     console.log(`[WARN] 手牌只识别出${handTiles.length}张（应为20-21张），自动重试识别...`);
     try {
       const retryResponse = await invokeLLM(
@@ -367,7 +391,7 @@ async function runAnalysis(imageBase64: string): Promise<any> {
       const retryContent = retryResponse.choices[0]?.message?.content;
       const retryRawText = typeof retryContent === "string" ? retryContent : JSON.stringify(retryContent);
       const retryRecognition = extractJSON(retryRawText);
-      const retryTiles = retryRecognition.handTiles || [];
+      const retryTiles = filterTiles(retryRecognition.handTiles || []);
       console.log(`[DEBUG] 重试识别手牌(${retryTiles.length}张): ${retryTiles.join(", ")}`);
       if (retryTiles.length > handTiles.length) {
         handTiles = retryTiles;
@@ -379,12 +403,29 @@ async function runAnalysis(imageBase64: string): Promise<any> {
     }
   }
 
-  // ===== 自动修正：每种牌最多4张，超过则尝试转换大小字 =====
+  // ===== 自动修正：每种牌最多4张，鬼牌最多2张，超过则尝试转换大小字 =====
   const tileCount: Record<string, number> = {};
   for (const t of handTiles) {
     tileCount[t] = (tileCount[t] || 0) + 1;
   }
   let needsFix = false;
+  
+  // 鬼牌最多2张，超过的直接删除
+  if ((tileCount['鬼'] || 0) > 2) {
+    needsFix = true;
+    const excess = tileCount['鬼']! - 2;
+    console.log(`[WARN] 鬼牌识别出${tileCount['鬼']}张（最多2张），删除${excess}张多余鬼牌`);
+    let removed = 0;
+    handTiles = handTiles.filter(t => {
+      if (t === '鬼' && removed < excess) {
+        removed++;
+        return false;
+      }
+      return true;
+    });
+    tileCount['鬼'] = 2;
+  }
+  
   for (const [tile, count] of Object.entries(tileCount)) {
     if (count > 4 && tile !== '鬼') {
       needsFix = true;
@@ -405,7 +446,7 @@ async function runAnalysis(imageBase64: string): Promise<any> {
             }
             return t;
           });
-          console.log(`[FIX] 将${canConvert}张"${tile}"修正为"${counterpart}"`);
+          console.log(`[FIX] 将26张"${tile}"修正为"${counterpart}"`);
         }
       }
     }
