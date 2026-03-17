@@ -479,8 +479,9 @@ async function runAnalysis(imageBase64: string): Promise<any> {
     return type;
   };
 
+  // 确保最终返回的handTiles是经过白名单过滤的版本
   return {
-    handTiles: recognition.handTiles || [],
+    handTiles: handTiles,
     myExposedGroups: (recognition.myExposedGroups || []).map((g: any) => ({ ...g, huxi: g.huxi || 0 })),
     opponentExposedGroups: (recognition.opponentExposedGroups || []).map((g: any) => ({ ...g, huxi: g.huxi || 0 })),
     discardedTiles: recognition.discardedTiles || [],
