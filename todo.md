@@ -152,6 +152,6 @@
 - [x] 优化: LLM prompt中传入预期手牌数量，严格约束识别数量
 - [x] 前端: 手牌数量不匹配时显示醒目警告（区分多识/少识）
 
-- [ ] 将screen-capture.py打包成Windows .exe可执行文件
-- [ ] 上传.exe到CDN，前端添加下载链接
-- [ ] 更新截屏助手安装指南，添加exe下载选项
+- [x] 将screen-capture.py打包成Windows一键启动bat（zipai-start.bat），双击自动安装依赖并运行
+- [x] 上传bat到CDN，前端添加下载链接
+- [x] 更新截屏助手安装指南，简化为4步操作
