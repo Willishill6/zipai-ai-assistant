@@ -35,67 +35,48 @@ for (let i = 0; i < 10; i++) {
 CHAR_TO_NUM["鬼"] = 0;
 
 // ===== 识别 Prompt（V3：两步法，先识别数字，再识别大小字）=====
-const STEP1_PROMPT = `你是桂林飞飞字牌游戏的牌面识别专家。
+const STEP1_PROMPT_V4 = `你是世界顶级的桂林飞飞字牌游戏图像识别引擎。你的任务是精确无误地识别截图中的每一张手牌。
 
-## 任务：识别手牌区域的所有牌
+## 核心任务：识别手牌
 
-### 手牌区域定位（最重要！）
-- 手牌 = 截图最底部的白色方块牌，通常分2-3排，阶梯状排列
-- 明牌组 = 截图左侧已翻开的竖排牌组（碰/坎/吃），这些不是手牌！
-- 对手牌 = 截图顶部，不是手牌！
-- 弃牌 = 中间散落的牌，不是手牌！
+### 1. **手牌区域定位 (至关重要)**
+- **只识别手牌**: 手牌位于截图 **最底部**，由白色方块牌组成。
+- **阶梯式布局**: 手牌通常分2-3排，呈阶梯状重叠排列。请仔细检查每一排，不要漏掉被部分遮挡的牌。
+- **右侧突出牌**: 经常有1-2张牌在最右侧突出，很容易被忽略，请务必检查。
+- **排除干扰项**: 绝对不要将在屏幕其他位置的牌识别为手牌，例如：
+    - **明牌**: 屏幕左侧或中间竖向排列的牌组。
+    - **弃牌**: 屏幕中间散落的牌。
+    - **对手牌**: 屏幕顶部的牌。
 
-### 识别规则
-1. 每张牌显示一个汉字，代表数字1-10，或者是鬼牌（特殊图案）
-2. 每个数字有两种写法：小字（笔画简单）和大字（笔画复杂有偏旁）
-3. 你只需要识别数字（1-10）和是否为大字，不需要写出具体汉字
+### 2. **识别规则 (必须严格遵守)**
+- **输出格式**: 必须返回一个纯粹的JSON对象，不包含任何Markdown标记 (如 ```json...```)。
+- **内容要求**: JSON对象必须包含 `handTiles` (一个对象数组) 和 `isDealer` (布尔值)。
+- **牌对象结构**: `handTiles` 数组中的每个对象必须包含 `num` (数字 1-10, 鬼牌为0) 和 `large` (布尔值, true为大字)。
 
-### 大字判断方法（关键！）
-- 数字5：小字"五"（4笔，无偏旁，横竖横竖）vs 大字"伍"（有单人旁亻在左边）
-- 数字6：小字"六"（4笔，点横撇点）vs 大字"陆"（有耳刀旁阝在左边）
-- 数字7：小字"七"（2笔，极简）vs 大字"柒"（上木下复杂，10笔）
-- 数字8：小字"八"（2笔，撇捺）vs 大字"捌"（有提手旁扌在左边）
-- 数字9：小字"九"（2笔，撇弯钩）vs 大字"玖"（有王旁在左边）
-- 数字10：小字"十"（2笔，十字形）vs 大字"拾"（有提手旁扌在左边）
-- 数字1：小字"一"（1笔横线）vs 大字"壹"（上士下冖豆，复杂）
-- 数字2：小字"二"（2笔两横）vs 大字"贰"（左弋右贝，复杂）
-- 数字3：小字"三"（3笔三横）vs 大字"叁"（上部撇点，下部大，复杂）
-- 数字4：小字"四"（口框内两竖）vs 大字"肆"（左聿右长横，极复杂）
+### 3. **验证与校准 (识别后自我检查)**
+- **总数验证**: 庄家手牌为 **21** 张，闲家为 **20** 张。识别出的总数必须是这两个数字之一。如果不是，请重新检查图像，找出遗漏或多余的牌。
+- **单牌数量验证**: 每一种特定的牌 (例如，小字'五') 最多只能有 **4** 张。如果识别出5张或更多，说明有误，请仔细核对最可疑的牌。
+- **鬼牌数量验证**: 鬼牌 (num: 0) 最多只能有 **2** 张。如果超过2张，必然是识别错误，最常见的是将'叁'或'三'误认为鬼牌。
 
-### 颜色规律（辅助判断）
-- 红色牌：只有2、7、10（小字二七十 或 大字贰柒拾）
-- 黑色牌：其他所有数字（1、3、4、5、6、8、9）
-- 如果看到红色且字形极简（2笔以内）→ 一定是小字（七或十）
-- 如果看到红色且字形复杂 → 大字（贰、柒、拾）
+### 4. **汉字区分指南 (高频易错点)**
+- **叁 vs 鬼**: '叁' (num: 3, large: true) 顶部是三个独立的笔画，而'鬼'牌是一个特殊的、非汉字的图案。这是最常见的错误，请加倍小心。
+- **五 vs 伍**: '五' (num: 5, large: false) 是简单的四笔画。'伍' (num: 5, large: true) 左侧有明显的'亻'偏旁。
+- **其他大字**: 大字 '壹', '贰', '肆', '陆', '柒', '捌', '玖', '拾' 都有独特的、比小字复杂得多的结构，通常带有偏旁部首。
 
-### 验证规则
-- 每种牌（同数字同大小字）最多4张
-- 庄家手牌21张，闲家手牌20张
-- 鬼牌最多2张
+### 5. **输出格式示例**
 
-### 输出格式（纯JSON，不加代码块）
 {
   "handTiles": [
+    {"num": 4, "large": true},
     {"num": 5, "large": false},
-    {"num": 5, "large": false},
-    {"num": 5, "large": false},
-    {"num": 5, "large": true},
+    {"num": 2, "large": true},
     {"num": 0, "large": false}
   ],
-  "myExposedGroups": [{"tiles": ["五","五","五"], "type": "碰"}],
-  "opponentExposedGroups": [],
-  "discardedTiles": [],
-  "remainingTiles": 40,
-  "myCurrentHuxi": 0,
-  "opponentCurrentHuxi": 0,
-  "actionButtons": "无",
   "isDealer": true
 }
+`;
 
-注意：
-- num=0 表示鬼牌
-- large=true 表示大字，large=false 表示小字
-- myExposedGroups 里的牌用实际汉字表示`;
+const STEP1_PROMPT = STEP1_PROMPT_V4;
 
 async function invokeLLM(messages: any[]): Promise<any> {
   if (!FORGE_API_KEY) throw new Error("API Key 未配置");
@@ -148,46 +129,7 @@ function convertTileObjects(tileObjs: Array<{num: number, large: boolean}>): str
   });
 }
 
-function autoFixTiles(tiles: string[]): string[] {
-  // Count each tile
-  const count: Record<string, number> = {};
-  for (const t of tiles) count[t] = (count[t] || 0) + 1;
-  
-  // Fix tiles that appear more than 4 times by converting to counterpart
-  const LARGE_TO_SMALL: Record<string, string> = {
-    "壹":"一","贰":"二","叁":"三","肆":"四","伍":"五",
-    "陆":"六","柒":"七","捌":"八","玖":"九","拾":"十"
-  };
-  const SMALL_TO_LARGE: Record<string, string> = {
-    "一":"壹","二":"贰","三":"叁","四":"肆","五":"伍",
-    "六":"陆","七":"柒","八":"捌","九":"玖","十":"拾"
-  };
-  
-  let result = [...tiles];
-  for (const [tile, cnt] of Object.entries(count)) {
-    if (cnt > 4 && tile !== "鬼") {
-      const counterpart = LARGE_TO_SMALL[tile] || SMALL_TO_LARGE[tile];
-      if (counterpart) {
-        const counterCnt = count[counterpart] || 0;
-        const excess = cnt - 4;
-        const canConvert = Math.min(excess, 4 - counterCnt);
-        if (canConvert > 0) {
-          let converted = 0;
-          result = result.map(t => {
-            if (t === tile && converted < canConvert) {
-              converted++;
-              count[tile]--;
-              count[counterpart] = (count[counterpart] || 0) + 1;
-              return counterpart;
-            }
-            return t;
-          });
-        }
-      }
-    }
-  }
-  return result;
-}
+
 
 function getEmptyAnalysis(content?: string): any {
   return {
@@ -277,57 +219,7 @@ async function runAnalysis(imageBase64: string): Promise<any> {
     return getEmptyAnalysis("未能识别到手牌");
   }
   
-  // === 自动重试：手牌数量不足时 ===
-  if (handTiles.length < 18) {
-    console.log(`[WARN] 手牌只识别出${handTiles.length}张，自动重试...`);
-    try {
-      const retryResponse = await invokeLLM([
-        { role: "system", content: STEP1_PROMPT },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `上次只找到${handTiles.length}张手牌，明显不对！手牌应该有20-21张。
 
-请重新仔细看截图底部区域：
-- 手牌分上下2-3排，阶梯状排列
-- 上排通常10-11张，下排通常10-11张
-- 右侧可能有1-2张单独突出的牌（也是手牌！）
-- 左侧可能有1列竖排手牌（不是明牌组！）
-
-请从上排左边第一张开始，逐排逐张识别，总数必须20-21张！
-直接输出JSON，不要加代码块。`,
-            },
-            {
-              type: "image_url",
-              image_url: { url: imageBase64, detail: "high" },
-            },
-          ],
-        },
-      ]);
-      const retryContent = retryResponse.choices[0]?.message?.content;
-      const retryRec = extractJSON(typeof retryContent === "string" ? retryContent : JSON.stringify(retryContent));
-      const retryTileObjs = retryRec.handTiles || [];
-      let retryTiles: string[];
-      if (retryTileObjs.length > 0 && typeof retryTileObjs[0] === "object" && "num" in retryTileObjs[0]) {
-        retryTiles = convertTileObjects(retryTileObjs);
-      } else {
-        retryTiles = retryTileObjs;
-      }
-      if (retryTiles.length > handTiles.length) {
-        handTiles = retryTiles;
-        recognition = retryRec;
-        console.log(`[INFO] 重试成功，手牌增加到${handTiles.length}张`);
-      }
-    } catch (e) {
-      console.log(`[WARN] 重试失败:`, e);
-    }
-  }
-  
-  // === 自动修正大小字混淆（超过4张的牌）===
-  handTiles = autoFixTiles(handTiles);
-  recognition.handTiles = handTiles;
   
   // === Step 2: 引擎计算所有拆组方案 ===
   const exposedHuxi = recognition.myCurrentHuxi || 0;
