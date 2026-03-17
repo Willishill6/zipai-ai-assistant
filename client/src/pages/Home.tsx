@@ -963,15 +963,20 @@ export default function Home() {
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="flex items-start gap-2">
                         <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: "oklch(0.55 0.15 145)" }}>1</span>
-                        <span>确保电脑已安装 <strong>Python 3</strong>，然后运行：<br/><code className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: "oklch(0.15 0.01 240)", color: "oklch(0.85 0.1 145)" }}>pip install pillow requests mss</code></span>
+                        <span>
+                          下载以下两个文件到同一文件夹：<br/>
+                          <a href="/zipai-start.bat" download className="underline font-semibold" style={{ color: "oklch(0.5 0.15 195)" }}>📥 下载 zipai-start.bat（一键启动）</a>
+                          <span className="mx-1">+</span>
+                          <a href="/screen-capture.py" download className="underline font-semibold" style={{ color: "oklch(0.5 0.15 195)" }}>📥 下载 screen-capture.py</a>
+                        </span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: "oklch(0.55 0.15 145)" }}>2</span>
-                        <span>下载截屏脚本：<a href="/screen-capture.py" download className="underline font-semibold" style={{ color: "oklch(0.5 0.15 195)" }}>点击下载 screen-capture.py</a></span>
+                        <span>确保已安装 <strong>Python 3</strong>（<a href="https://www.python.org/downloads/" target="_blank" rel="noreferrer" className="underline" style={{ color: "oklch(0.5 0.15 195)" }}>下载地址</a>，安装时勾选 <strong>Add Python to PATH</strong>）</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: "oklch(0.55 0.15 145)" }}>3</span>
-                        <span>运行脚本：<br/><code className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: "oklch(0.15 0.01 240)", color: "oklch(0.85 0.1 145)" }}>python screen-capture.py --server {typeof window !== 'undefined' ? window.location.origin : ''}</code></span>
+                        <span>双击运行 <strong>zipai-start.bat</strong>，自动安装依赖并启动截屏助手</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: "oklch(0.55 0.15 145)" }}>4</span>
