@@ -1,244 +1,109 @@
 /**
  * Vercel Serverless Function: /api/analyze
  * 
- * 接收图片 base64，调用 LLM 识别牌面，再用引擎计算最优方案，返回分析结果。
- * 不需要登录，完全公开。
+ * 两步识别法：
+ * Step 1: LLM识别每张牌的数字(1-10)和是否为大字
+ * Step 2: 引擎计算最优方案
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { analyzeHand } from "./zipai-engine";
 import { generateAdviceFromEngine } from "./advice-generator";
 
 // ===== LLM 调用 =====
-// 优先使用环境变量，其次使用内置代理
 const FORGE_API_URL = process.env.BUILT_IN_FORGE_API_URL
   ? `${process.env.BUILT_IN_FORGE_API_URL.replace(/\/$/, "")}/v1/chat/completions`
   : process.env.OPENAI_BASE_URL
   ? `${process.env.OPENAI_BASE_URL.replace(/\/$/, "")}/chat/completions`
   : "https://api.manus.im/api/llm-proxy/v1/chat/completions";
-
 const FORGE_API_KEY =
   process.env.BUILT_IN_FORGE_API_KEY ||
   process.env.OPENAI_API_KEY ||
   "sk-5WXsFtEZiTrf54UFE4nnAu";
 
-// ===== 识别 Prompt（V2：精准区分手牌/明牌，修复叁/壹混淆，阶梯布局）=====
-const TILE_RECOGNITION_PROMPT = `你是桂林飞飞字牌游戏的牌面识别专家。
+// ===== 大小字对照表 =====
+const SMALL_CHARS = ["一","二","三","四","五","六","七","八","九","十"];
+const LARGE_CHARS = ["壹","贰","叁","肆","伍","陆","柒","捌","玖","拾"];
+const NUM_TO_SMALL: Record<number, string> = {};
+const NUM_TO_LARGE: Record<number, string> = {};
+const CHAR_TO_NUM: Record<string, number> = {};
+for (let i = 0; i < 10; i++) {
+  NUM_TO_SMALL[i+1] = SMALL_CHARS[i];
+  NUM_TO_LARGE[i+1] = LARGE_CHARS[i];
+  CHAR_TO_NUM[SMALL_CHARS[i]] = i+1;
+  CHAR_TO_NUM[LARGE_CHARS[i]] = i+1;
+}
+CHAR_TO_NUM["鬼"] = 0;
 
-## 一、牌面大字 vs 小字对照表（最重要！）
+// ===== 识别 Prompt（V3：两步法，先识别数字，再识别大小字）=====
+const STEP1_PROMPT = `你是桂林飞飞字牌游戏的牌面识别专家。
 
-| 数字 | 小字 | 小字特征 | 大字 | 大字特征 | 颜色 |
-|------|------|---------|------|---------|------|
-| 1 | 一 | 仅1笔横线，极简 | 壹 | 上部有"士"，下部有"冖豆"，复杂 | 黑 |
-| 2 | 二 | 仅2笔两横，极简 | 贰 | 左有"弋"，右有"贝"，复杂 | 红 |
-| 3 | 三 | 仅3笔三横，极简 | 叁 | 上部3个撇点"厶"，下部"大"，复杂 | 黑 |
-| 4 | 四 | 口字框内两竖，5笔 | 肆 | 左"聿"右长横，13笔，极复杂 | 黑 |
-| 5 | 五 | 横竖横竖，4笔，无偏旁 | 伍 | 左边有单人旁"亻"，6笔 | 黑 |
-| 6 | 六 | 点横撇点，4笔，无偏旁 | 陆 | 左边有耳刀旁"阝"，7笔 | 黑 |
-| 7 | 七 | 一横一竖弯，2笔，极简 | 柒 | 上"木"下复杂，10笔 | 红 |
-| 8 | 八 | 一撇一捺，2笔，极简 | 捌 | 左提手旁"扌"，右"别"，10笔 | 黑 |
-| 9 | 九 | 撇和弯钩，2笔，极简 | 玖 | 左"王"右"久"，7笔 | 黑 |
-| 10 | 十 | 一横一竖，2笔，极简 | 拾 | 左提手旁"扌"，右"合"，9笔 | 红 |
-| 鬼 | 鬼/飞飞 | 紫色或彩色特殊图案 | — | — | 紫/彩 |
+## 任务：识别手牌区域的所有牌
 
-## 二、最容易混淆的字对（必读！）
+### 手牌区域定位（最重要！）
+- 手牌 = 截图最底部的白色方块牌，通常分2-3排，阶梯状排列
+- 明牌组 = 截图左侧已翻开的竖排牌组（碰/坎/吃），这些不是手牌！
+- 对手牌 = 截图顶部，不是手牌！
+- 弃牌 = 中间散落的牌，不是手牌！
 
-**叁 vs 壹**（都是黑色大字，最容易混淆！）
-- 叁：上面是3个小撇点（像"厶厶厶"），下面是"大"字，整体像"参"的简化
-- 壹：上面是"士"（横横竖），中间"冖"，下面"豆"，整体像"壶"的变体
-- 关键区别：叁的上部有3个撇点，壹的上部是横横竖
+### 识别规则
+1. 每张牌显示一个汉字，代表数字1-10，或者是鬼牌（特殊图案）
+2. 每个数字有两种写法：小字（笔画简单）和大字（笔画复杂有偏旁）
+3. 你只需要识别数字（1-10）和是否为大字，不需要写出具体汉字
 
-**七 vs 柒**（都是红色！）
-- 七：极简，只有2笔（一横一竖弯），像数字"7"
-- 柒：复杂，上面有"木"，下面有复杂结构，10笔以上
+### 大字判断方法（关键！）
+- 数字5：小字"五"（4笔，无偏旁，横竖横竖）vs 大字"伍"（有单人旁亻在左边）
+- 数字6：小字"六"（4笔，点横撇点）vs 大字"陆"（有耳刀旁阝在左边）
+- 数字7：小字"七"（2笔，极简）vs 大字"柒"（上木下复杂，10笔）
+- 数字8：小字"八"（2笔，撇捺）vs 大字"捌"（有提手旁扌在左边）
+- 数字9：小字"九"（2笔，撇弯钩）vs 大字"玖"（有王旁在左边）
+- 数字10：小字"十"（2笔，十字形）vs 大字"拾"（有提手旁扌在左边）
+- 数字1：小字"一"（1笔横线）vs 大字"壹"（上士下冖豆，复杂）
+- 数字2：小字"二"（2笔两横）vs 大字"贰"（左弋右贝，复杂）
+- 数字3：小字"三"（3笔三横）vs 大字"叁"（上部撇点，下部大，复杂）
+- 数字4：小字"四"（口框内两竖）vs 大字"肆"（左聿右长横，极复杂）
 
-**十 vs 拾**（都是红色！）
-- 十：极简，只有2笔（十字形），像加号"+"
-- 拾：左边有提手旁，复杂
+### 颜色规律（辅助判断）
+- 红色牌：只有2、7、10（小字二七十 或 大字贰柒拾）
+- 黑色牌：其他所有数字（1、3、4、5、6、8、9）
+- 如果看到红色且字形极简（2笔以内）→ 一定是小字（七或十）
+- 如果看到红色且字形复杂 → 大字（贰、柒、拾）
 
-**五 vs 伍**（都是黑色）
-- 五：4笔，无偏旁，字形简单
-- 伍：左边有单人旁"亻"，字形偏左
+### 验证规则
+- 每种牌（同数字同大小字）最多4张
+- 庄家手牌21张，闲家手牌20张
+- 鬼牌最多2张
 
-**三 vs 叁**（都是黑色）
-- 三：极简，就是3条横线
-- 叁：复杂，上部有撇点，下部有"大"
-
-## 三、截图区域布局（极其重要！）
-
-桂林飞飞的截图有固定布局：
-
-**我的手牌区域（底部，必须全部识别）：**
-- 位置：截图最底部，白色小方块牌
-- 布局：通常是阶梯状2-4排，每排从左到右排列
-- 庄家：21张手牌（底部有"庄"标记）
-- 闲家：20张手牌
-- ❗ 右侧可能有1-2张单独突出的牌（比其他牌位置更高），这些也是手牌，不能漏！
-- ❗ 有时最左侧有1列竖排的牌（1-4张），这些也是手牌！
-
-**我的明牌区域（绝对不是手牌！）：**
-- 位置：截图左侧，竖排的牌组（碰/坎/吃）
-- 特征：通常3-4张一组，竖向排列，位置在左边缘
-- ❗❗❗ 这些牌绝对不能计入handTiles！要放入myExposedGroups！
-
-**对手明牌区域（绝对不是手牌！）：**
-- 位置：截图顶部
-- ❗❗❗ 这些牌绝对不能计入handTiles！
-
-**弃牌区：** 中间散落的牌
-
-## 四、识别步骤
-
-1. **先定位手牌区域**：找到截图底部的白色牌区，这是手牌
-2. **先定位明牌区域**：找到左侧竖排牌组，这是明牌（不是手牌）
-3. **从左到右、从上到下**逐排识别手牌：
-   - 最上排（如果有）：从左到右
-   - 中间排：从左到右
-   - 最下排：从左到右
-   - 右侧突出的单列：从上到下
-4. **每张牌识别流程**：
-   a. 看颜色：红色 → 只可能是 二/贰/七/柒/十/拾
-   b. 看笔画复杂度：简单（无偏旁）→ 小字；复杂（有偏旁）→ 大字
-   c. 红色且极简（2笔）→ 一定是小字（七或十）
-5. **验证**：每种牌最多4张，超过说明大小字混淆了
-
-## 五、输出格式（必须严格遵守）
-必须返回纯 JSON 对象，不要加任何markdown代码块标记！
-返回格式：
+### 输出格式（纯JSON，不加代码块）
 {
-  "handTiles": ["一", "二", ...],
-  "myExposedGroups": [{"tiles": [...], "type": "碰"}],
+  "handTiles": [
+    {"num": 5, "large": false},
+    {"num": 5, "large": false},
+    {"num": 5, "large": false},
+    {"num": 5, "large": true},
+    {"num": 0, "large": false}
+  ],
+  "myExposedGroups": [{"tiles": ["五","五","五"], "type": "碰"}],
   "opponentExposedGroups": [],
   "discardedTiles": [],
   "remainingTiles": 40,
   "myCurrentHuxi": 0,
   "opponentCurrentHuxi": 0,
   "actionButtons": "无",
-  "isDealer": false
-}`;
-
-const RECOGNITION_JSON_SCHEMA = {
-  type: "json_schema" as const,
-  json_schema: {
-    name: "tile_recognition",
-    strict: true,
-    schema: {
-      type: "object",
-      properties: {
-        handTiles: {
-          type: "array",
-          items: { type: "string" },
-          description: "我的手牌列表（底部区域），每张牌用标准名称：一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾鬼",
-        },
-        myExposedGroups: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              tiles: { type: "array", items: { type: "string" } },
-              type: { type: "string", description: "碰/坎/偎/提/跑/吃/顺子/绞牌" },
-            },
-            required: ["tiles", "type"],
-            additionalProperties: false,
-          },
-          description: "我方已明示的牌组（底部左侧）",
-        },
-        opponentExposedGroups: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              tiles: { type: "array", items: { type: "string" } },
-              type: { type: "string", description: "碰/坎/偎/提/跑/吃/顺子/绞牌" },
-            },
-            required: ["tiles", "type"],
-            additionalProperties: false,
-          },
-          description: "对手已明示的牌组（顶部区域）",
-        },
-        discardedTiles: {
-          type: "array",
-          items: { type: "string" },
-          description: "弃牌区已打出的牌（中间散落的牌）",
-        },
-        remainingTiles: {
-          type: "integer",
-          description: "剩余底牌数量（右上角数字）",
-        },
-        myCurrentHuxi: {
-          type: "integer",
-          description: "我方当前显示的胡息数（左侧数字，如果看不到填0）",
-        },
-        opponentCurrentHuxi: {
-          type: "integer",
-          description: "对手当前显示的胡息数（如果看不到填0）",
-        },
-        actionButtons: {
-          type: "string",
-          description: "当前可见的操作按钮（如：胡/碰/吃/X），如果没有则填'无'",
-        },
-        isDealer: {
-          type: "boolean",
-          description: "我是否是庄家（庄家标记在头像旁，庄家21张手牌，闲家20张）",
-        },
-      },
-      required: [
-        "handTiles",
-        "myExposedGroups",
-        "opponentExposedGroups",
-        "discardedTiles",
-        "remainingTiles",
-        "myCurrentHuxi",
-        "opponentCurrentHuxi",
-        "actionButtons",
-        "isDealer",
-      ],
-      additionalProperties: false,
-    },
-  },
-};
-
-// 从LLM响应中提取JSON（处理markdown代码块和各种格式）
-function extractJSON(content: string): any {
-  if (!content) throw new Error("Empty content");
-  // 如果已经是对象直接返回
-  if (typeof content !== "string") return content;
-  let cleaned = content.trim();
-  // 去掉所有markdown代码块标记（支持多行）
-  cleaned = cleaned.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "");
-  cleaned = cleaned.trim();
-  // 尝试直接解析
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // 尝试提取最大的 { ... } 块（贪心匹配）
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch {
-        // 尝试修复常见的JSON错误：末尾多余逗号
-        const fixed = match[0].replace(/,\s*([}\]])/g, "$1");
-        try {
-          return JSON.parse(fixed);
-        } catch {
-          // ignore
-        }
-      }
-    }
-    throw new Error("Cannot parse JSON from: " + cleaned.slice(0, 200));
-  }
+  "isDealer": true
 }
-async function invokeLLM(messages: any[], responseFormat?: any): Promise<any> {
-  if (!FORGE_API_KEY) {
-    throw new Error("API Key 未配置");
-  }
+
+注意：
+- num=0 表示鬼牌
+- large=true 表示大字，large=false 表示小字
+- myExposedGroups 里的牌用实际汉字表示`;
+
+async function invokeLLM(messages: any[]): Promise<any> {
+  if (!FORGE_API_KEY) throw new Error("API Key 未配置");
   const payload: any = {
     model: "gemini-2.5-flash",
     messages,
     max_tokens: 32768,
   };
-  // 注意：不使用json_schema强制格式，因为gemini-2.5-flash通过代理时不支持strict模式
-  // 改为在prompt中要求返回JSON格式
   const response = await fetch(FORGE_API_URL, {
     method: "POST",
     headers: {
@@ -252,6 +117,76 @@ async function invokeLLM(messages: any[], responseFormat?: any): Promise<any> {
     throw new Error(`LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`);
   }
   return response.json();
+}
+
+function extractJSON(text: string): any {
+  if (!text) throw new Error("Empty response");
+  // Remove markdown code blocks
+  let cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+  // Try direct parse
+  try { return JSON.parse(cleaned); } catch {}
+  // Find JSON object
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch {}
+  }
+  // Find JSON array
+  const astart = cleaned.indexOf("[");
+  const aend = cleaned.lastIndexOf("]");
+  if (astart !== -1 && aend !== -1 && aend > astart) {
+    try { return JSON.parse(cleaned.slice(astart, aend + 1)); } catch {}
+  }
+  throw new Error("Cannot extract JSON from: " + text.slice(0, 200));
+}
+
+function convertTileObjects(tileObjs: Array<{num: number, large: boolean}>): string[] {
+  return tileObjs.map(t => {
+    if (t.num === 0) return "鬼";
+    if (t.large) return NUM_TO_LARGE[t.num] || "鬼";
+    return NUM_TO_SMALL[t.num] || "鬼";
+  });
+}
+
+function autoFixTiles(tiles: string[]): string[] {
+  // Count each tile
+  const count: Record<string, number> = {};
+  for (const t of tiles) count[t] = (count[t] || 0) + 1;
+  
+  // Fix tiles that appear more than 4 times by converting to counterpart
+  const LARGE_TO_SMALL: Record<string, string> = {
+    "壹":"一","贰":"二","叁":"三","肆":"四","伍":"五",
+    "陆":"六","柒":"七","捌":"八","玖":"九","拾":"十"
+  };
+  const SMALL_TO_LARGE: Record<string, string> = {
+    "一":"壹","二":"贰","三":"叁","四":"肆","五":"伍",
+    "六":"陆","七":"柒","八":"捌","九":"玖","十":"拾"
+  };
+  
+  let result = [...tiles];
+  for (const [tile, cnt] of Object.entries(count)) {
+    if (cnt > 4 && tile !== "鬼") {
+      const counterpart = LARGE_TO_SMALL[tile] || SMALL_TO_LARGE[tile];
+      if (counterpart) {
+        const counterCnt = count[counterpart] || 0;
+        const excess = cnt - 4;
+        const canConvert = Math.min(excess, 4 - counterCnt);
+        if (canConvert > 0) {
+          let converted = 0;
+          result = result.map(t => {
+            if (t === tile && converted < canConvert) {
+              converted++;
+              count[tile]--;
+              count[counterpart] = (count[counterpart] || 0) + 1;
+              return counterpart;
+            }
+            return t;
+          });
+        }
+      }
+    }
+  }
+  return result;
 }
 
 function getEmptyAnalysis(content?: string): any {
@@ -285,144 +220,115 @@ function getEmptyAnalysis(content?: string): any {
 
 async function runAnalysis(imageBase64: string): Promise<any> {
   const t0 = Date.now();
+  
+  // === Step 1: LLM识别牌面（两步法：数字+大小字标记）===
+  const recognitionResponse = await invokeLLM([
+    { role: "system", content: STEP1_PROMPT },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `请识别这张桂林飞飞字牌游戏截图中的手牌。
 
-  // === Step 1: LLM识别牌面（自动识别张数，不固定）===
-  const recognitionResponse = await invokeLLM(
-    [
-      { role: "system", content: TILE_RECOGNITION_PROMPT },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `请精确识别这张桂林飞飞字牌游戏截图中的手牌。
+手牌在截图最底部，分2-3排阶梯状排列。
+- 每张牌输出：{"num": 数字, "large": 是否大字}
+- num=0 表示鬼牌
+- 请从上排左边开始，逐排逐张识别
+- 注意右侧可能有单独突出的1-2张牌，也是手牌
+- 注意左侧可能有竖排的1列手牌（不是明牌组！）
 
-步骤1：定位区域
-- 手牌 = 截图最底部的白色方块牌（阶梯状排列，2-4排）
-- 明牌 = 截图左侧竖排的牌组（碰/坎/吃），这些不是手牌！
-- 对手牌 = 截图顶部，不是手牌！
-
-步骤2：逐排识别手牌（从上到下，每排从左到右）
-- 注意：右侧可能有1-2张单独突出的牌，也是手牌！
-- 注意：左侧可能有1列竖排手牌（不是明牌组）！
-
-步骤3：每张牌识别
-- 红色+极简(2笔) = 小字七(七)或小字十(十)
-- 红色+复杂 = 大字柒/贰/拾
-- 黑色+无偏旁 = 小字
-- 黑色+有偏旁(亻阝扌) = 大字
-
-步骤4：验证
-- 每种牌最多4张，超过说明混淆了大小字
-- 叁(上部撇点+大) ≠ 壹(上部士+冖+豆)
-- 庄家21张，闲家20张，以实际为准`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: imageBase64, detail: "high" },
-          },
-        ],
-      },
-    ],
-  );
+请直接输出JSON，不要加代码块。`,
+        },
+        {
+          type: "image_url",
+          image_url: { url: imageBase64, detail: "high" },
+        },
+      ],
+    },
+  ]);
+  
   const recContent = recognitionResponse.choices[0]?.message?.content;
   let recognition: any;
   try {
     recognition = extractJSON(typeof recContent === "string" ? recContent : JSON.stringify(recContent));
   } catch (e) {
-    console.error("[analyze] JSON parse failed:", String(e).slice(0, 200), "\nContent:", String(recContent).slice(0, 200));
+    console.error("[analyze] JSON parse failed:", String(e).slice(0, 200));
     return getEmptyAnalysis("牌面识别失败");
   }
-
-  let handTiles: string[] = recognition.handTiles || [];
+  
+  // Convert tile objects to string tiles
+  let handTiles: string[];
+  const rawTileObjs = recognition.handTiles || [];
+  
+  if (rawTileObjs.length > 0 && typeof rawTileObjs[0] === "object" && "num" in rawTileObjs[0]) {
+    // New format: [{num, large}]
+    handTiles = convertTileObjects(rawTileObjs);
+  } else if (rawTileObjs.length > 0 && typeof rawTileObjs[0] === "string") {
+    // Old format: string array (fallback)
+    handTiles = rawTileObjs;
+  } else {
+    handTiles = [];
+  }
+  
   console.log(`[DEBUG] LLM识别手牌(${handTiles.length}张): ${handTiles.join(", ")}`);
-
+  
   if (handTiles.length === 0) {
     return getEmptyAnalysis("未能识别到手牌");
   }
-
-  // === 手牌数量不足时自动重试一次 ===
+  
+  // === 自动重试：手牌数量不足时 ===
   if (handTiles.length < 18) {
-    console.log(`[WARN] 手牌只识别出${handTiles.length}张（应为20-21张），自动重试识别...`);
+    console.log(`[WARN] 手牌只识别出${handTiles.length}张，自动重试...`);
     try {
-      const retryResponse = await invokeLLM(
-        [
-          { role: "system", content: TILE_RECOGNITION_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `上次识别只找到${handTiles.length}张手牌，这明显不对！手牌应该有20-21张。\n\n请重新仔细识别。手牌在截图最底部，分上下两排：\n- 上排：紧贴下排上方，通常10-11张小白牌\n- 下排：截图最底部，通常10-11张小白牌\n\n请从上排左边第一张开始，逐张识别到下排最右边一张。总数必须20-21张！`,
-              },
-              {
-                type: "image_url",
-                image_url: { url: imageBase64, detail: "high" },
-              },
-            ],
-          },
-        ],
-      );
+      const retryResponse = await invokeLLM([
+        { role: "system", content: STEP1_PROMPT },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `上次只找到${handTiles.length}张手牌，明显不对！手牌应该有20-21张。
+
+请重新仔细看截图底部区域：
+- 手牌分上下2-3排，阶梯状排列
+- 上排通常10-11张，下排通常10-11张
+- 右侧可能有1-2张单独突出的牌（也是手牌！）
+- 左侧可能有1列竖排手牌（不是明牌组！）
+
+请从上排左边第一张开始，逐排逐张识别，总数必须20-21张！
+直接输出JSON，不要加代码块。`,
+            },
+            {
+              type: "image_url",
+              image_url: { url: imageBase64, detail: "high" },
+            },
+          ],
+        },
+      ]);
       const retryContent = retryResponse.choices[0]?.message?.content;
-      const retryRecognition = extractJSON(typeof retryContent === "string" ? retryContent : JSON.stringify(retryContent));
-      const retryTiles = retryRecognition.handTiles || [];
+      const retryRec = extractJSON(typeof retryContent === "string" ? retryContent : JSON.stringify(retryContent));
+      const retryTileObjs = retryRec.handTiles || [];
+      let retryTiles: string[];
+      if (retryTileObjs.length > 0 && typeof retryTileObjs[0] === "object" && "num" in retryTileObjs[0]) {
+        retryTiles = convertTileObjects(retryTileObjs);
+      } else {
+        retryTiles = retryTileObjs;
+      }
       if (retryTiles.length > handTiles.length) {
         handTiles = retryTiles;
-        if (retryRecognition.myExposedGroups !== undefined) recognition.myExposedGroups = retryRecognition.myExposedGroups;
-        if (retryRecognition.opponentExposedGroups !== undefined) recognition.opponentExposedGroups = retryRecognition.opponentExposedGroups;
-        if (retryRecognition.discardedTiles !== undefined) recognition.discardedTiles = retryRecognition.discardedTiles;
-        if (retryRecognition.remainingTiles !== undefined) recognition.remainingTiles = retryRecognition.remainingTiles;
-        if (retryRecognition.myCurrentHuxi !== undefined) recognition.myCurrentHuxi = retryRecognition.myCurrentHuxi;
-        if (retryRecognition.opponentCurrentHuxi !== undefined) recognition.opponentCurrentHuxi = retryRecognition.opponentCurrentHuxi;
-        if (retryRecognition.isDealer !== undefined) recognition.isDealer = retryRecognition.isDealer;
-        console.log(`[INFO] 重试成功，手牌从${handTiles.length}张增加到${retryTiles.length}张`);
+        recognition = retryRec;
+        console.log(`[INFO] 重试成功，手牌增加到${handTiles.length}张`);
       }
     } catch (e) {
-      console.log(`[WARN] 重试识别失败:`, e);
+      console.log(`[WARN] 重试失败:`, e);
     }
   }
-
-  // === 牌数校验：每种牌最多4张，超过则尝试自动修正大小字混淆 ===
-  const LARGE_TO_SMALL: Record<string, string> = {
-    '壹': '一', '贰': '二', '叁': '三', '肆': '四', '伍': '五',
-    '陆': '六', '柒': '七', '捌': '八', '玖': '九', '拾': '十'
-  };
-  const SMALL_TO_LARGE: Record<string, string> = {
-    '一': '壹', '二': '贰', '三': '叁', '四': '肆', '五': '伍',
-    '六': '陆', '七': '柒', '八': '捌', '九': '玖', '十': '拾'
-  };
-  const tileCount: Record<string, number> = {};
-  for (const t of handTiles) {
-    tileCount[t] = (tileCount[t] || 0) + 1;
-  }
-  let needsFix = false;
-  for (const [tile, count] of Object.entries(tileCount)) {
-    if (count > 4 && tile !== '鬼') {
-      needsFix = true;
-      const counterpart = LARGE_TO_SMALL[tile] || SMALL_TO_LARGE[tile];
-      if (counterpart) {
-        const counterpartCount = tileCount[counterpart] || 0;
-        const excess = count - 4;
-        const canConvert = Math.min(excess, 4 - counterpartCount);
-        if (canConvert > 0) {
-          let converted = 0;
-          handTiles = handTiles.map(t => {
-            if (t === tile && converted < canConvert && (tileCount[tile] ?? 0) > 4) {
-              converted++;
-              tileCount[tile] = (tileCount[tile] ?? 0) - 1;
-              tileCount[counterpart] = (tileCount[counterpart] || 0) + 1;
-              return counterpart;
-            }
-            return t;
-          });
-        }
-      }
-    }
-  }
-  if (needsFix) {
-    recognition.handTiles = handTiles;
-  }
-
+  
+  // === 自动修正大小字混淆（超过4张的牌）===
+  handTiles = autoFixTiles(handTiles);
+  recognition.handTiles = handTiles;
+  
   // === Step 2: 引擎计算所有拆组方案 ===
   const exposedHuxi = recognition.myCurrentHuxi || 0;
   const knownTiles: string[] = [
@@ -431,12 +337,11 @@ async function runAnalysis(imageBase64: string): Promise<any> {
     ...(recognition.opponentExposedGroups || []).flatMap((g: any) => g.tiles || []),
   ];
   const engineResult = analyzeHand(handTiles, { exposedHuxi, minHuxi: 10, knownTiles });
-
+  
   // === Step 3: 引擎直接生成建议 ===
   const advice = generateAdviceFromEngine(engineResult, recognition, exposedHuxi);
-
   console.log(`[PERF] 总耗时: ${Date.now() - t0}ms`);
-
+  
   const typeLabel = (type: string) => {
     if (type === "kan") return "坎";
     if (type === "shunzi") return "顺子";
@@ -446,7 +351,7 @@ async function runAnalysis(imageBase64: string): Promise<any> {
     if (type === "ghost_mixed") return "组合牌(鬼)";
     return type;
   };
-
+  
   return {
     handTiles: recognition.handTiles || [],
     myExposedGroups: (recognition.myExposedGroups || []).map((g: any) => ({ ...g, huxi: g.huxi || 0 })),
@@ -520,15 +425,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64 || typeof imageBase64 !== "string") {
