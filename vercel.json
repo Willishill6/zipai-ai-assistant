@@ -2,7 +2,28 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist/public",
   "framework": "vite",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "@vercel/node@5.6.15"
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/analyze",
+      "destination": "/api/analyze"
+    },
+    {
+      "source": "/api/reanalyze",
+      "destination": "/api/reanalyze"
+    },
+    {
+      "source": "/api/screen/upload",
+      "destination": "/api/screen/upload"
+    },
+    {
+      "source": "/api/screen/latest",
+      "destination": "/api/screen/latest"
+    },
     {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"

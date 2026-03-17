@@ -1,6 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { trpc } from "@/lib/trpc";
 import TileEditor from "@/components/TileEditor";
 import {
   Camera,
@@ -163,15 +161,39 @@ const riskBadgeStyles: Record<string, { bg: string; text: string }> = {
   "极高风险": { bg: "oklch(0.9 0.08 25)", text: "oklch(0.35 0.25 25)" },
 };
 
-export default function Home() {
-  const { user } = useAuth();
+// Direct API call helpers (no backend server needed)
+async function callAnalyzeAPI(imageBase64: string): Promise<any> {
+  const resp = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64 }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(errText || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
 
+async function callReanalyzeAPI(data: any): Promise<any> {
+  const resp = await fetch('/api/reanalyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(errText || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export default function Home() {
   // Mode
   const [mode, setMode] = useState<"upload" | "live">("live");
 
-  // Dealer/non-dealer selection (庄家21张/闲家20张)
-  const [isDealer, setIsDealer] = useState(false);
-  const expectedTileCount = isDealer ? 21 : 20;
+  // 自动识别张数，不再需要手动选择庄家/闲家
+  const expectedTileCount = 0; // 0 = auto detect by LLM
 
   // Upload mode state
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -271,20 +293,33 @@ export default function Home() {
     setError(err.message || "分析失败");
   };
 
-  const quickAnalyzeMutation = trpc.analysis.quickAnalyze.useMutation({
-    onSuccess: handleAnalysisSuccess,
-    onError: handleAnalysisError,
-  });
-
-  const analyzeMutation = trpc.analysis.analyze.useMutation({
-    onSuccess: handleAnalysisSuccess,
-    onError: handleAnalysisError,
-  });
-
-  const reanalyzeMutation = trpc.analysis.reanalyze.useMutation({
-    onSuccess: handleAnalysisSuccess,
-    onError: handleAnalysisError,
-  });
+  // Direct API mutation helpers (replaces tRPC)
+  const quickAnalyzeMutation = {
+    mutate: (input: { imageBase64: string; expectedTileCount?: number }) => {
+      callAnalyzeAPI(input.imageBase64)
+        .then(handleAnalysisSuccess)
+        .catch(handleAnalysisError);
+    },
+    mutateAsync: async (input: { imageBase64: string; expectedTileCount?: number }) => {
+      const result = await callAnalyzeAPI(input.imageBase64);
+      handleAnalysisSuccess(result);
+      return result;
+    },
+  };
+  const analyzeMutation = {
+    mutate: (input: { imageBase64: string; expectedTileCount?: number }) => {
+      callAnalyzeAPI(input.imageBase64)
+        .then(handleAnalysisSuccess)
+        .catch(handleAnalysisError);
+    },
+  };
+  const reanalyzeMutation = {
+    mutate: (input: any) => {
+      callReanalyzeAPI(input)
+        .then(handleAnalysisSuccess)
+        .catch(handleAnalysisError);
+    },
+  };
 
   // Handle tile correction
   const handleTilesChanged = useCallback((newTiles: string[]) => {
@@ -693,26 +728,9 @@ export default function Home() {
           截图上传
         </button>
 
-        {/* Dealer/Non-dealer toggle */}
+        {/* Auto-detect tile count badge */}
         <div className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg" style={{ background: "oklch(0.95 0.02 200)", border: "1px solid oklch(0.85 0.05 200)" }}>
-          <button
-            onClick={() => setIsDealer(false)}
-            className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-              !isDealer ? "text-white shadow" : "opacity-50"
-            }`}
-            style={!isDealer ? { background: "oklch(0.55 0.15 195)" } : {}}
-          >
-            闲家20张
-          </button>
-          <button
-            onClick={() => setIsDealer(true)}
-            className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-              isDealer ? "text-white shadow" : "opacity-50"
-            }`}
-            style={isDealer ? { background: "oklch(0.5 0.15 25)" } : {}}
-          >
-            庄家21张
-          </button>
+          <span className="text-xs font-bold" style={{ color: "oklch(0.45 0.15 195)" }}>🤖 自动识别张数</span>
         </div>
       </div>
 
@@ -1160,8 +1178,8 @@ export default function Home() {
           {result && (
             <>
               {/* ===== 0. 手牌识别+修正 (TileEditor) ===== */}
-              {/* 手牌数量不足警告 */}
-              {result.handTiles && result.handTiles.length > 0 && result.handTiles.length !== expectedTileCount && (
+              {/* 手牌数量过少警告（少于15张才提示） */}
+              {result.handTiles && result.handTiles.length > 0 && result.handTiles.length < 15 && (
                 <div
                   className="rounded-xl p-4 border-2 flex items-start gap-3"
                   style={{
@@ -1172,16 +1190,12 @@ export default function Home() {
                   <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "oklch(0.5 0.2 25)" }} />
                   <div>
                     <div className="font-bold text-sm mb-1" style={{ color: "oklch(0.4 0.15 25)" }}>
-                      手牌数量不匹配：AI识别出{result.handTiles.length}张，应为{expectedTileCount}张
+                      手牌识别可能不完整：AI识别出{result.handTiles.length}张（应为20-21张）
                     </div>
                     <div className="text-xs" style={{ color: "oklch(0.45 0.1 25)" }}>
-                      当前选择为{isDealer ? '庄家' : '闲家'}，应有{expectedTileCount}张手牌，但AI识别出{result.handTiles.length}张。建议：
+                      建议：1. 点击"修正识别"手动添加漏识的牌
                       <br />
-                      1. 点击“修正识别”手动{result.handTiles.length < expectedTileCount ? '添加漏识的牌' : '删除多识的牌'}
-                      <br />
-                      2. 或检查庄家/闲家选择是否正确（左上角切换）
-                      <br />
-                      3. 或重新截图（确保手牌区域清晰可见）后再次分析
+                      2. 或重新截图（确保手牌区域清晰可见）后再次分析
                     </div>
                   </div>
                 </div>
